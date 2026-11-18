@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+
+  <!-- Color de la barra de estado del navegador (debe coincidir con manifest.json) -->
+  <meta name="theme-color" content="#0f172a">
+  <meta name="author" content="Antonio García González">
+
+  <!-- Metadatos adicionales para modo standalone en dispositivos Apple (iOS / WebKit) -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="InspecciónPWA">
+
+  <title>Inspección Visual PWA | Antonio García González</title>
+
+  <!-- Vínculo obligatorio al Manifiesto Web con ruta relativa para GitHub Pages -->
+  <link rel="manifest" href="./manifest.json">
+
+  <!-- Icono obligatorio para pantalla de inicio en iPhone/iPad (Safari iOS lo prioriza) -->
+  <link rel="apple-touch-icon" href="./icons/icon-192.png">
+
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <!-- Cabecera principal: identidad de la PWA, nombre del alumno y botón de instalación -->
+  <header class="cabecera">
+    <div class="cabecera-info">
+      <h1>Inspección Visual PWA</h1>
+      <p class="autor">Antonio García González</p>
+    </div>
+
+    <!--
+      Botón de instalación para Android/Chrome.
+      Permanece oculto por defecto y solo se muestra si el navegador dispara
+      el evento 'beforeinstallprompt'. En iPhone nunca aparece porque iOS no usa este evento.
+    -->
+    <button id="btn-instalar" type="button" class="btn btn-instalar" hidden>
+      Instalar App
+    </button>
+  </header>
+
+  <main class="contenedor">
+    <!--
+      Guía manual exclusiva para iPhone/iPad (Safari/WebKit):
+      Permanece oculta por defecto y app.js la muestra únicamente cuando detecta
+      que el usuario está en iOS y todavía no ha instalado la PWA en su pantalla de inicio.
+    -->
+    <section id="instrucciones-ios" class="card card-ios" hidden>
+      <h2>Instalar en iPhone (iOS)</h2>
+      <p>
+        Para instalar en iPhone, pulsa el icono <strong>Compartir</strong> en la barra de Safari
+        y selecciona <strong>"Agregar a inicio"</strong>.
+      </p>
+    </section>
+
+    <!-- Panel de estado: informa en todo momento qué sensor o permiso está activo -->
+    <section class="card card-estado" aria-live="polite">
+      <div class="fila-estado">
+        <span class="etiqueta-estado">Estado del dispositivo</span>
+        <span id="indicador-lente" class="badge-lente">Lente: Trasera</span>
+      </div>
+      <p id="mensaje-estado" class="mensaje-estado">
+        Cámara en espera. Presiona "Solicitar Acceso a Cámara" para continuar.
+      </p>
+    </section>
+
+    <!--
+      Tarjeta de Pre-Permiso (UX Ética):
+      Se muestra ANTES de llamar a navigator.mediaDevices.getUserMedia().
+      Evita que el navegador bloquee el permiso permanentemente si el usuario rechaza
+      un cuadro nativo inesperado.
+    -->
+    <section id="aviso-permiso" class="card card-permiso" hidden>
+      <h2>Aviso de Privacidad y Cámara</h2>
+      <p>
+        Esta aplicación requiere acceso a tu cámara únicamente para mostrar una vista previa
+        local en pantalla. Ninguna imagen se envía a servidores externos.
+      </p>
+      <p id="texto-lente-permiso" class="detalle-lente"></p>
+      <div class="acciones-permiso">
+        <button id="btn-confirmar-permiso" type="button" class="btn btn-primario">
+          Aceptar y Encender Cámara
+        </button>
+        <button id="btn-cancelar-permiso" type="button" class="btn btn-secundario">
+          Cancelar
+        </button>
+      </div>
+    </section>
+
+    <!-- Visor de cámara y controles de hardware -->
+    <section class="card card-visor">
+      <div class="contenedor-video">
+        <!--
+          Atributos obligatorios en móvil/iOS:
+          - autoplay: inicia la reproducción apenas llega el flujo de video.
+          - playsinline: evita que iPhone/Safari abra la cámara en pantalla completa
+            ocultando los botones HTML.
+          - muted: requerido por políticas de reproducción automática de navegadores.
+        -->
+        <video id="visor-camara" autoplay playsinline muted></video>
+
+        <div id="placeholder-camara" class="placeholder-camara">
+          <span>Vista previa apagada</span>
+          <small>El flujo de video se procesa 100% en tu dispositivo</small>
+        </div>
+      </div>
+
+      <div class="controles-camara">
+        <button id="btn-preparar-camara" type="button" class="btn btn-primario">
+          Solicitar Acceso a Cámara
+        </button>
+
+        <button id="btn-alternar-camara" type="button" class="btn btn-secundario" disabled>
+          Cambiar Cámara (Trasera / Frontal)
+        </button>
+
+        <button id="btn-apagar-camara" type="button" class="btn btn-peligro" disabled>
+          Apagar Cámara
+        </button>
+      </div>
+    </section>
+  </main>
+
+  <footer class="pie">
+    <p>PWA Tema 6.1 y 6.2 • Antonio García González</p>
+  </footer>
+
+  <!-- Script principal en JavaScript Vanilla (sin librerías externas) -->
+  <script src="./app.js"></script>
+</body>
+</html>
