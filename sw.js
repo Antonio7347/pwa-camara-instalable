@@ -1,15 +1,21 @@
 // ==========================================================================
 // sw.js - Service Worker con estrategia Cache First para Instalabilidad PWA
+// Temas 6.1 y 6.2: Soporte Offline del App Shell e Iconos de Instalación
 // Alumno: Antonio García González
 // ==========================================================================
-// REGLA DEL CURSO: 100% JavaScript Vanilla, sin librerías externas y SIN
+// REGLA DEL CURSO: 100% JavaScript Vanilla, sin librerías externas y CERO
 // async/await. Toda la asincronía se resuelve con Promesas (.then / .catch).
+//
+// PROPÓSITO ARQUITECTÓNICO:
+//   Aunque el flujo de la cámara (MediaStream) proviene del hardware local y no de la red,
+//   contar con un Service Worker activo que responda en 'fetch' es requisito obligatorio
+//   de instalabilidad y garantiza que el App Shell abra en Modo Avión sin errores de red.
 // ==========================================================================
 
-const CACHE_NAME = 'pwa-camara-v1';
+const CACHE_NAME = 'pwa-camara-v2';
 
-// Todos los recursos esenciales de la aplicación usan rutas relativas (./)
-// para funcionar dentro del subdirectorio de GitHub Pages.
+// Recursos esenciales precacheados con rutas relativas (./) para respetar
+// el subdirectorio del repositorio en GitHub Pages sin errores 404.
 const ARCHIVOS_APP_SHELL = [
   './',
   './index.html',
@@ -20,11 +26,13 @@ const ARCHIVOS_APP_SHELL = [
   './icons/icon-512.png'
 ];
 
-// 1. EVENTO INSTALL: Precarga todos los archivos e iconos en la caché local
+// 1. EVENTO INSTALL: Precarga atómica del App Shell e iconos físicos
 self.addEventListener('install', (event) => {
-  // Fuerza que el Service Worker nuevo tome el control sin esperar a cerrar pestañas
+  // Pasa directamente a activación sin quedar retenido en estado 'waiting'
   self.skipWaiting();
 
+  // cache.addAll() es atómico: si cualquiera de los 7 recursos devuelve 404,
+  // la promesa se rechaza y la instalación del Service Worker se aborta.
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then((cache) => {
@@ -34,7 +42,7 @@ self.addEventListener('install', (event) => {
   );
 });
 
-// 2. EVENTO ACTIVATE: Elimina versiones de caché anteriores y reclama clientes
+// 2. EVENTO ACTIVATE: Purga de contenedores de versiones anteriores y control inmediato
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys()
@@ -49,15 +57,15 @@ self.addEventListener('activate', (event) => {
         );
       })
       .then(() => {
-        // Permite que el SW controle la página de inmediato en el scope actual
+        // Toma control inmediato de las pestañas abiertas en el scope actual sin recargar
         return self.clients.claim();
       })
   );
 });
 
-// 3. EVENTO FETCH: Estrategia Cache First (primero busca en caché; si no existe, va a la red)
+// 3. EVENTO FETCH: Estrategia Cache First para lecturas GET
 self.addEventListener('fetch', (event) => {
-  // Solo interceptamos peticiones de lectura (GET)
+  // La Cache API únicamente soporta peticiones GET
   if (event.request.method !== 'GET') return;
 
   event.respondWith(

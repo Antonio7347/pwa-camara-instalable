@@ -1,21 +1,32 @@
 // ==========================================================================
 // app.js - Instalabilidad Nativa, Pre-Permiso Ético y Control de Cámara
+// Temas 6.1 (Manifest e Instalación) y 6.2 (Acceso Ético a Hardware Multimedia)
 // Alumno: Antonio García González
 // ==========================================================================
-// REGLA OBLIGATORIA: 100% JavaScript Vanilla, sin librerías externas y CERO
-// uso de async/await. Toda operación asíncrona usa .then(), .catch() y .finally().
+// REGLA DEL CURSO: 100% JavaScript Vanilla, sin librerías externas y CERO
+// uso de async/await. Toda asincronía se resuelve con .then(), .catch() y .finally().
+//
+// FLUJO GENERAL DE EJECUCIÓN:
+//   1. Instalación:
+//      - Android/Chromium: 'beforeinstallprompt' (preventDefault) ──► muestra #btn-instalar ──► .prompt() y .userChoice
+//      - iPhone/WebKit:    verificarEntornoIOS() (!standalone)    ──► muestra guía manual #instrucciones-ios
+//   2. Cámara con Consentimiento Consciente (2 pasos):
+//      - Clic 1 (#btn-preparar-camara)  ──► despliega #aviso-permiso en HTML sin tocar el hardware todavía
+//      - Clic 2 (#btn-confirmar-permiso) ──► iniciarCamara(modo) ──► detenerCamaraActiva() (track.stop) ──► getUserMedia()
 // ==========================================================================
 
-// Referencias de estado global para instalación y hardware de cámara
+// Estado de la sesión para el evento de instalación diferido y el MediaStream activo
 let eventoInstalacionDiferido = null;
 let streamActual = null;
-let modoCamaraActual = 'environment'; // 'environment' = cámara trasera | 'user' = cámara frontal
+let modoCamaraActual = 'environment'; // 'environment' = lente trasera | 'user' = lente frontal
 
 // --------------------------------------------------------------------------
-// 1. REGISTRO DEL SERVICE WORKER (Requisito técnico para instalabilidad)
+// 1. REGISTRO DEL SERVICE WORKER (Uno de los 3 requisitos de instalabilidad PWA
+//    junto con contexto seguro HTTPS y un manifest.json válido con iconos 192/512)
 // --------------------------------------------------------------------------
 if ('serviceWorker' in navigator) {
-  // Se usa ruta relativa './sw.js' para respetar el subdirectorio en GitHub Pages
+  // Ruta relativa './sw.js' indispensable para subdirectorios en GitHub Pages;
+  // usar '/sw.js' apuntaría a la raíz del dominio provocando Error 404.
   navigator.serviceWorker.register('./sw.js')
     .then((registro) => {
       console.log('[PWA] Service Worker registrado en el scope:', registro.scope);
@@ -26,7 +37,7 @@ if ('serviceWorker' in navigator) {
 }
 
 // --------------------------------------------------------------------------
-// 2. UTILIDADES DE INTERFAZ (Estado visual, lente y botones)
+// 2. UTILIDADES DE INTERFAZ (Mensajes de estado, badge de lente y botones)
 // --------------------------------------------------------------------------
 function obtenerNombreLente(modo) {
   return modo === 'environment' ? 'Trasera' : 'Frontal';
@@ -62,15 +73,17 @@ function actualizarControlesCamara(camaraEncendida) {
 }
 
 // --------------------------------------------------------------------------
-// 3. DETECCIÓN DE iPHONE / iPAD (iOS / WebKit)
+// 3. DETECCIÓN DE ENTORNO iOS / WEBKIT Y DEGRADACIÓN ELEGANTE DE INSTALACIÓN
+// - En iOS todos los navegadores usan el motor WebKit, el cual nunca dispara
+//   'beforeinstallprompt'. Si detectamos un iPhone/iPad ejecutándose aún en pestaña
+//   del navegador (!standalone), mostramos las instrucciones manuales de instalación.
 // --------------------------------------------------------------------------
-// En iOS, Safari nunca dispara el evento 'beforeinstallprompt'.
-// Por eso verificamos si el usuario está en iOS y si aún no abre la app instalada.
 function verificarEntornoIOS() {
   const esDispositivoAppleMovil = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
     (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   const esIOS = esDispositivoAppleMovil && !window.MSStream;
 
+  // Comprueba tanto la propiedad propietaria de Safari (navigator.standalone) como el estándar CSS display-mode
   const estaInstalada = window.navigator.standalone === true ||
     window.matchMedia('(display-mode: standalone)').matches;
 
@@ -83,21 +96,21 @@ function verificarEntornoIOS() {
 }
 
 // --------------------------------------------------------------------------
-// 4. INSTALACIÓN NATIVA EN ANDROID / CHROME (beforeinstallprompt)
+// 4. INTERCEPCIÓN DE INSTALACIÓN NATIVA EN ANDROID / CHROMIUM
 // --------------------------------------------------------------------------
 window.addEventListener('beforeinstallprompt', (event) => {
-  // Evita que Chrome muestre su mini-banner automático antes de tiempo
+  // Detiene el mini-banner automático del navegador y conserva el evento en memoria
+  // para dispararlo únicamente cuando el usuario pulse nuestro botón #btn-instalar.
   event.preventDefault();
   eventoInstalacionDiferido = event;
 
-  // Muestra nuestro botón personalizado dentro de la interfaz
   const btnInstalar = document.getElementById('btn-instalar');
   if (btnInstalar) {
     btnInstalar.hidden = false;
   }
 });
 
-// Si la app se instala desde la barra del navegador o desde nuestro botón, ocultamos el botón
+// Se dispara cuando la PWA completa su instalación, limpiando la referencia usada
 window.addEventListener('appinstalled', () => {
   const btnInstalar = document.getElementById('btn-instalar');
   if (btnInstalar) {
@@ -108,11 +121,16 @@ window.addEventListener('appinstalled', () => {
 });
 
 // --------------------------------------------------------------------------
-// 5. CONTROL DE HARDWARE DE CÁMARA (Promesas puras con .then/.catch/.finally)
+// 5. GESTIÓN DE HARDWARE MULTIMEDIA (MediaStream, track.stop y Promesas puras)
 // --------------------------------------------------------------------------
 
-// Libera todas las pistas activas del sensor antes de apagar o cambiar de cámara.
-// En Android e iOS/WebKit es obligatorio detener el stream previo para evitar bloqueos.
+/**
+ * Libera físicamente el sensor deteniendo cada pista activa del MediaStream.
+ * No basta con asignar `visorVideo.srcObject = null`, ya que eso solo desconecta la etiqueta
+ * HTML dejando el sensor encendido y retenido por el sistema operativo. En Android e iOS/WebKit,
+ * abrir la cámara frontal mientras la trasera sigue activa sin hacer `track.stop()` bloquea el
+ * hardware y rechaza la promesa con `NotReadableError`.
+ */
 function detenerCamaraActiva() {
   if (streamActual) {
     streamActual.getTracks().forEach((track) => {
@@ -122,9 +140,13 @@ function detenerCamaraActiva() {
   }
 }
 
-// Solicita el acceso a la cámara indicada ('environment' o 'user')
+/**
+ * Solicita al navegador acceso al lente indicado ('environment' = trasera | 'user' = frontal).
+ * Resuelve la asincronía con .then(), diagnostica excepciones DOMException en .catch()
+ * y rehabilita la UI en .finally().
+ */
 function iniciarCamara(modo) {
-  // Verificación de seguridad: getUserMedia solo existe bajo HTTPS o localhost
+  // Feature Detection y Contexto Seguro: navigator.mediaDevices es undefined fuera de HTTPS o localhost
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
     actualizarMensajeEstado(
       'Esta API requiere conexión segura (HTTPS) o un navegador compatible.',
@@ -133,7 +155,7 @@ function iniciarCamara(modo) {
     return Promise.resolve();
   }
 
-  // Siempre liberamos la cámara anterior antes de encender otra
+  // Paso obligatorio antes de abrir otro lente para evitar conflicto de hardware ocupado
   detenerCamaraActiva();
 
   const btnConfirmar = document.getElementById('btn-confirmar-permiso');
@@ -161,6 +183,10 @@ function iniciarCamara(modo) {
       if (visorVideo) visorVideo.srcObject = null;
       actualizarControlesCamara(false);
 
+      // Clasificación específica según error.name de la excepción DOMException:
+      // - NotAllowedError: permiso rechazado por el usuario o bloqueado permanentemente en ajustes del navegador.
+      // - NotFoundError: el dispositivo carece del sensor físico solicitado (ej. PC sin cámara).
+      // - NotReadableError: el sensor existe y tiene permiso, pero está retenido por otra app o un stream previo.
       if (error.name === 'NotAllowedError') {
         actualizarMensajeEstado(
           'Permiso denegado. Habilita el acceso a la cámara en los ajustes de tu navegador.',
@@ -181,13 +207,14 @@ function iniciarCamara(modo) {
       }
     })
     .finally(() => {
-      // Se ejecuta siempre (haya éxito o error) para reactivar el botón de confirmación
+      // .finally() se ejecuta siempre (tanto en éxito como en fallo) para reactivar el botón
+      // y prevenir múltiples solicitudes simultáneas mientras se inicializaba el sensor.
       if (btnConfirmar) btnConfirmar.disabled = false;
     });
 }
 
 // --------------------------------------------------------------------------
-// 6. CONEXIÓN DE EVENTOS DE LA INTERFAZ AL CARGAR EL DOM
+// 6. INICIALIZACIÓN Y EVENTOS DE INTERFAZ AL CARGAR EL DOM
 // --------------------------------------------------------------------------
 document.addEventListener('DOMContentLoaded', () => {
   verificarEntornoIOS();
@@ -204,12 +231,14 @@ document.addEventListener('DOMContentLoaded', () => {
   const btnApagarCamara = document.getElementById('btn-apagar-camara');
   const visorVideo = document.getElementById('visor-camara');
 
-  // Botón personalizado de instalación (Android / Chrome)
+  // Disparo bajo demanda del cuadro de instalación en Android / Chromium
   if (btnInstalar) {
     btnInstalar.addEventListener('click', () => {
       if (!eventoInstalacionDiferido) return;
 
-      // Muestra el diálogo nativo de instalación y escucha la decisión del usuario
+      // .prompt() abre el diálogo nativo; por seguridad solo puede invocarse una única vez
+      // sobre cada instancia del evento (reutilizarlo lanzaría InvalidStateError), por lo que
+      // al resolverse .userChoice ocultamos el botón y limpiamos eventoInstalacionDiferido = null.
       eventoInstalacionDiferido.prompt();
       eventoInstalacionDiferido.userChoice
         .then((resultado) => {
@@ -217,7 +246,6 @@ document.addEventListener('DOMContentLoaded', () => {
             btnInstalar.hidden = true;
             actualizarMensajeEstado('Instalación aceptada por el usuario.', 'activo');
           } else {
-            // Chrome solo permite usar prompt() una vez por cada evento beforeinstallprompt
             btnInstalar.hidden = true;
             actualizarMensajeEstado('Instalación pospuesta. Recarga la página si deseas instalarla después.');
           }
@@ -229,7 +257,8 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // Paso 1 del flujo ético (Pre-Permiso): muestra la tarjeta informativa sin tocar el hardware
+  // Paso 1 del Patrón Pre-Permiso (UX Consciente):
+  // Solo muestra la tarjeta explicativa en el DOM sin disparar todavía el diálogo nativo del navegador.
   if (btnPrepararCamara) {
     btnPrepararCamara.addEventListener('click', () => {
       if (textoLentePermiso) {
@@ -241,7 +270,8 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // Paso 2 del flujo ético: el usuario confirma y recién ahora invocamos getUserMedia()
+  // Paso 2 del Patrón Pre-Permiso:
+  // Con el consentimiento informado del usuario, ocultamos el aviso e invocamos getUserMedia().
   if (btnConfirmarPermiso) {
     btnConfirmarPermiso.addEventListener('click', () => {
       if (avisoPermiso) {
@@ -251,7 +281,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // Opción de cancelar dentro del aviso previo sin disparar el diálogo nativo
+  // Permite desistir en la capa HTML sin quemar el permiso nativo del sistema operativo
   if (btnCancelarPermiso) {
     btnCancelarPermiso.addEventListener('click', () => {
       if (avisoPermiso) {
@@ -263,7 +293,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // Alternar entre cámara trasera ('environment') y cámara frontal ('user')
+  // Alternancia entre lente trasera ('environment') y frontal ('user') liberando antes el stream previo
   if (btnAlternarCamara) {
     btnAlternarCamara.addEventListener('click', () => {
       modoCamaraActual = modoCamaraActual === 'environment' ? 'user' : 'environment';
@@ -272,7 +302,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // Apagar cámara: detiene los tracks, limpia el video y actualiza el estado
+  // Apagado completo: detiene pistas físicas (track.stop), desvincula el <video> y restaura el placeholder
   if (btnApagarCamara) {
     btnApagarCamara.addEventListener('click', () => {
       detenerCamaraActiva();

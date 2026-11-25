@@ -2,29 +2,32 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
+  <!-- Requisito de adaptabilidad móvil PWA; viewport-fit=cover aprovecha pantallas con notch en modo standalone -->
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 
-  <!-- Color de la barra de estado del navegador (debe coincidir con manifest.json) -->
+  <!-- theme-color pinta la barra superior del sistema operativo; en manifest.json, background_color pinta la Splash Screen de carga -->
   <meta name="theme-color" content="#0f172a">
   <meta name="author" content="Antonio García González">
 
-  <!-- Metadatos adicionales para modo standalone en dispositivos Apple (iOS / WebKit) -->
+  <!-- Metadatos de compatibilidad para ejecución sin barra de navegador (standalone) en iOS / WebKit -->
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="InspecciónPWA">
 
   <title>Inspección Visual PWA | Antonio García González</title>
 
-  <!-- Vínculo obligatorio al Manifiesto Web con ruta relativa para GitHub Pages -->
+  <!-- Vínculo al Manifiesto Web con ruta relativa './' para evitar errores 404 en el subdirectorio de GitHub Pages.
+       Define start_url, scope, display: standalone e iconos físicos exactos de 192x192 (any maskable) y 512x512 px. -->
   <link rel="manifest" href="./manifest.json">
 
-  <!-- Icono obligatorio para pantalla de inicio en iPhone/iPad (Safari iOS lo prioriza) -->
+  <!-- Etiqueta propietaria de Apple con ruta relativa: aunque iOS lee parte del manifest.json, WebKit sigue priorizando
+       apple-touch-icon para generar el icono en la pantalla de inicio en lugar de poner una miniatura en blanco. -->
   <link rel="apple-touch-icon" href="./icons/icon-192.png">
 
   <link rel="stylesheet" href="./styles.css">
 </head>
 <body>
-  <!-- Cabecera principal: identidad de la PWA, nombre del alumno y botón de instalación -->
+  <!-- Cabecera principal: identidad de la PWA y botón de instalación programática -->
   <header class="cabecera">
     <div class="cabecera-info">
       <h1>Inspección Visual PWA</h1>
@@ -32,9 +35,9 @@
     </div>
 
     <!--
-      Botón de instalación para Android/Chrome.
-      Permanece oculto por defecto y solo se muestra si el navegador dispara
-      el evento 'beforeinstallprompt'. En iPhone nunca aparece porque iOS no usa este evento.
+      Botón de instalación para navegadores Chromium (Android / Chrome / Edge):
+      Inicia oculto (hidden) y app.js lo habilita al interceptar 'beforeinstallprompt'.
+      En iPhone/iPad (WebKit) permanece oculto porque Apple bloquea ese evento por diseño.
     -->
     <button id="btn-instalar" type="button" class="btn btn-instalar" hidden>
       Instalar App
@@ -43,9 +46,9 @@
 
   <main class="contenedor">
     <!--
-      Guía manual exclusiva para iPhone/iPad (Safari/WebKit):
-      Permanece oculta por defecto y app.js la muestra únicamente cuando detecta
-      que el usuario está en iOS y todavía no ha instalado la PWA en su pantalla de inicio.
+      Degradación elegante para iPhone/iPad (Safari y navegadores en iOS usan WebKit):
+      Como no existe 'beforeinstallprompt', verificarEntornoIOS() en app.js muestra esta guía
+      únicamente cuando detecta iOS y comprueba que aún no corre instalada (!navigator.standalone).
     -->
     <section id="instrucciones-ios" class="card card-ios" hidden>
       <h2>Instalar en iPhone (iOS)</h2>
@@ -55,7 +58,7 @@
       </p>
     </section>
 
-    <!-- Panel de estado: informa en todo momento qué sensor o permiso está activo -->
+    <!-- Panel de diagnóstico en vivo del sensor y estado de permisos -->
     <section class="card card-estado" aria-live="polite">
       <div class="fila-estado">
         <span class="etiqueta-estado">Estado del dispositivo</span>
@@ -67,10 +70,12 @@
     </section>
 
     <!--
-      Tarjeta de Pre-Permiso (UX Ética):
-      Se muestra ANTES de llamar a navigator.mediaDevices.getUserMedia().
-      Evita que el navegador bloquee el permiso permanentemente si el usuario rechaza
-      un cuadro nativo inesperado.
+      Patrón de Pre-Permiso (UX Ética y Consciente):
+      Se despliega ANTES de invocar navigator.mediaDevices.getUserMedia().
+      Si pidiéramos el permiso nativo de golpe al cargar y el usuario pulsara "Bloquear",
+      el sistema operativo guardaría esa negativa y JavaScript quedaría impedido permanentemente
+      de volver a mostrar el diálogo nativo (obligando a desbloquearlo manualmente en Ajustes).
+      Además, en iOS Safari y la PWA instalada tienen almacenes de permisos separados (sandboxing).
     -->
     <section id="aviso-permiso" class="card card-permiso" hidden>
       <h2>Aviso de Privacidad y Cámara</h2>
@@ -89,15 +94,15 @@
       </div>
     </section>
 
-    <!-- Visor de cámara y controles de hardware -->
+    <!-- Visor local del MediaStream y controles de hardware -->
     <section class="card card-visor">
       <div class="contenedor-video">
         <!--
-          Atributos obligatorios en móvil/iOS:
-          - autoplay: inicia la reproducción apenas llega el flujo de video.
-          - playsinline: evita que iPhone/Safari abra la cámara en pantalla completa
-            ocultando los botones HTML.
-          - muted: requerido por políticas de reproducción automática de navegadores.
+          Tres atributos indispensables para vídeo de cámara en móviles e iOS:
+          - autoplay: reproduce el MediaStream en cuanto se asigna a visorVideo.srcObject.
+          - playsinline: evita que iOS/WebKit secuestre el video abriendo su reproductor nativo
+            en pantalla completa y tapando los botones HTML de alternar y apagar cámara.
+          - muted: cumple la política de reproducción automática móvil sin bloqueo del navegador.
         -->
         <video id="visor-camara" autoplay playsinline muted></video>
 
@@ -127,7 +132,7 @@
     <p>PWA Tema 6.1 y 6.2 • Antonio García González</p>
   </footer>
 
-  <!-- Script principal en JavaScript Vanilla (sin librerías externas) -->
+  <!-- Lógica en JavaScript Vanilla con ruta relativa para GitHub Pages -->
   <script src="./app.js"></script>
 </body>
 </html>
